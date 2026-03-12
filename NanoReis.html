@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dev2Bless - NanoRéis</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased">
+  <div id="app" class="max-w-md mx-auto p-4 pb-20">
+    
+    <header class="flex justify-between items-center mb-8 py-4 border-b border-slate-800">
+      <div class="flex items-baseline gap-2">
+        <span class="font-bold text-indigo-400 text-sm tracking-tighter uppercase">Dev2Bless</span>
+        <span class="text-slate-600">/</span>
+        <span v-if="!editarNome" @click="editarNome = true" class="text-lg font-semibold cursor-pointer hover:text-indigo-300 transition">
+          {{ appName }}
+        </span>
+        <input v-else v-model="appNameEdit" @keyup.enter="salvarNome" @blur="salvarNome" autofocus
+               class="bg-slate-900 text-indigo-200 border-b border-indigo-500 outline-none px-1 text-lg font-semibold w-32" />
+      </div>
+
+      <div class="flex gap-4 text-slate-500">
+        <button @click="triggerImport" title="Importar JSON" class="hover:text-emerald-400 transition">
+          <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+        </button>
+        <button @click="baixarDados" title="Backup JSON" class="hover:text-indigo-400 transition">
+          <i data-lucide="download-cloud" class="w-5 h-5"></i>
+        </button>
+        <input id="fileInput" type="file" accept="application/json" class="hidden" @change="handleFileImport" />
+      </div>
+    </header>
+
+    <div class="bg-indigo-600 p-6 rounded-3xl shadow-2xl shadow-indigo-900/20 mb-8">
+      <p class="text-indigo-200 text-xs font-bold uppercase tracking-widest mb-1">Saldo Total</p>
+      <h2 class="text-4xl font-black tabular-nums">{{ formatCurrency(saldo) }}</h2>
+    </div>
+
+    <div class="space-y-4 mb-8">
+      <div class="group">
+        <label class="text-[10px] uppercase font-bold text-slate-500 ml-2 mb-1 block">Descrição</label>
+        <input v-model="novaDesc" type="text" placeholder="Ex: Assinatura NetFlix" 
+               class="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 focus:border-indigo-500 outline-none transition" />
+      </div>
+      
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="text-[10px] uppercase font-bold text-slate-500 ml-2 mb-1 block">Valor</label>
+          <input v-model.number="novoValor" type="number" placeholder="0,00"
+                 class="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 font-bold text-xl focus:border-indigo-500 outline-none transition" />
+        </div>
+        <div>
+          <label class="text-[10px] uppercase font-bold text-slate-500 ml-2 mb-1 block">Categoria</label>
+          <input v-model="novaCategoria" type="text" placeholder="Geral" 
+                 class="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 focus:border-indigo-500 outline-none transition" />
+        </div>
+      </div>
+
+      <div class="flex gap-3">
+        <button @click="adicionar(1)" class="flex-1 bg-emerald-600 hover:bg-emerald-500 py-4 rounded-2xl font-black shadow-lg shadow-emerald-900/20 transition-all active:scale-95">
+          ENTRADA
+        </button>
+        <button @click="adicionar(-1)" class="flex-1 bg-rose-600 hover:bg-rose-500 py-4 rounded-2xl font-black shadow-lg shadow-rose-900/20 transition-all active:scale-95">
+          GASTO
+        </button>
+      </div>
+    </div>
+
+    <div class="bg-slate-900/50 border border-slate-800 p-4 rounded-2xl mb-8">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Filtros Avançados</h3>
+        <button @click="limparFiltros" class="p-2 hover:bg-slate-800 rounded-full text-rose-400 transition" title="Limpar Filtros">
+          <i data-lucide="filter-x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      
+      <div class="grid grid-cols-2 gap-3">
+        <select v-model="filtroPeriodo" class="bg-slate-800 border-none rounded-xl p-3 text-sm outline-none">
+          <option value="todos">Todo o período</option>
+          <option value="hoje">Hoje</option>
+          <option value="semana">Esta Semana</option>
+          <option value="mes">Este Mês</option>
+        </select>
+        
+        <select v-model="filtroCategoria" class="bg-slate-800 border-none rounded-xl p-3 text-sm outline-none">
+          <option value="">Todas Categorias</option>
+          <option v-for="c in categoriasDisponiveis" :key="c" :value="c">{{ c }}</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="space-y-3">
+      <div v-if="filteredTransacoes.length === 0" class="text-center py-12 text-slate-600">
+        <i data-lucide="ghost" class="w-10 h-10 mx-auto mb-2 opacity-20"></i>
+        <p class="text-sm">Nenhum registro encontrado</p>
+      </div>
+
+      <div v-for="item in filteredTransacoes" :key="item.id"
+           class="bg-slate-900 border border-slate-800/50 p-4 rounded-2xl flex justify-between items-center group">
+        <div class="flex flex-col">
+          <span class="font-bold text-slate-200">{{ item.desc }}</span>
+          <div class="flex items-center gap-2 mt-1">
+            <span class="text-[10px] px-2 py-0.5 bg-slate-800 rounded text-slate-400 uppercase font-bold">{{ item.categoria }}</span>
+            <span class="text-[10px] text-slate-600">{{ item.data.split(',')[0] }}</span>
+          </div>
+        </div>
+        <div class="flex flex-col items-end">
+          <span :class="item.valor > 0 ? 'text-emerald-400' : 'text-rose-400'" class="font-black tabular-nums">
+            {{ item.valor > 0 ? '+' : '' }}{{ formatCurrency(item.valor) }}
+          </span>
+          <button @click="remover(item.id)" class="opacity-0 group-hover:opacity-100 p-1 text-slate-600 hover:text-rose-500 transition">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createApp } = Vue;
+
+    // Utilitário de Banco de Dados (IndexedDB)
+    const DB_NAME = 'dev2bless_nano-reis';
+    const STORE_NAME = 'transacoes';
+
+    createApp({
+      data() {
+        return {
+          novaDesc: '', novoValor: null, novaCategoria: '',
+          transacoes: [],
+          filtroCategoria: '', filtroPeriodo: 'todos',
+          editarNome: false,
+          appName: localStorage.getItem('app_name') || 'NanoRéis',
+          appNameEdit: '',
+          db: null
+        };
+      },
+      computed: {
+        saldo() {
+          return this.transacoes.reduce((acc, item) => acc + Number(item.valor), 0);
+        },
+        categoriasDisponiveis() {
+          return [...new Set(this.transacoes.map(t => t.categoria || 'Geral'))].sort();
+        },
+        filteredTransacoes() {
+          let list = [...this.transacoes];
+          const agora = new Date();
+
+          if (this.filtroCategoria) {
+            list = list.filter(t => t.categoria === this.filtroCategoria);
+          }
+
+          if (this.filtroPeriodo !== 'todos') {
+            list = list.filter(t => {
+              const dataItem = new Date(t.createdAt);
+              if (this.filtroPeriodo === 'hoje') return dataItem.toDateString() === agora.toDateString();
+              if (this.filtroPeriodo === 'semana') {
+                const umaSemana = new Date().setDate(agora.getDate() - 7);
+                return dataItem >= umaSemana;
+              }
+              if (this.filtroPeriodo === 'mes') return dataItem.getMonth() === agora.getMonth() && dataItem.getFullYear() === agora.getFullYear();
+            });
+          }
+          return list.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+        }
+      },
+      async created() {
+        this.appNameEdit = this.appName;
+        await this.initDB();
+        this.carregarDados();
+      },
+      updated() {
+        lucide.createIcons(); // Atualiza ícones quando a DOM muda
+      },
+      methods: {
+        formatCurrency(v) { return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); },
+        
+        async initDB() {
+          return new Promise((resolve) => {
+            const req = indexedDB.open(DB_NAME, 1);
+            req.onupgradeneeded = (e) => e.target.result.createObjectStore(STORE_NAME, { keyPath: 'id' });
+            req.onsuccess = (e) => { this.db = e.target.result; resolve(); };
+          });
+        },
+
+        async carregarDados() {
+          const tx = this.db.transaction(STORE_NAME, 'readonly');
+          const store = tx.objectStore(STORE_NAME);
+          this.transacoes = await new Promise(r => store.getAll().onsuccess = (e) => r(e.target.result));
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        async adicionar(mod) {
+          if (!this.novaDesc || !this.novoValor) return alert('Preencha os campos!');
+          const item = {
+            id: crypto.randomUUID(),
+            desc: this.novaDesc,
+            valor: Math.abs(this.novoValor) * mod,
+            categoria: this.novaCategoria || 'Geral',
+            createdAt: new Date().toISOString(),
+            data: new Date().toLocaleString('pt-BR')
+          };
+          const tx = this.db.transaction(STORE_NAME, 'readwrite');
+          tx.objectStore(STORE_NAME).add(item);
+          tx.oncomplete = () => {
+            this.carregarDados();
+            this.novaDesc = ''; this.novoValor = null; this.novaCategoria = '';
+          };
+        },
+
+        async remover(id) {
+          if (!confirm('Excluir transação?')) return;
+          const tx = this.db.transaction(STORE_NAME, 'readwrite');
+          tx.objectStore(STORE_NAME).delete(id);
+          tx.oncomplete = () => this.carregarDados();
+        },
+
+        limparFiltros() {
+          this.filtroCategoria = '';
+          this.filtroPeriodo = 'todos';
+        },
+
+        salvarNome() {
+          this.editarNome = false;
+          this.appName = this.appNameEdit.trim() || 'Meu Caixa';
+          localStorage.setItem('app_name', this.appName);
+        },
+
+        baixarDados() {
+          const blob = new Blob([JSON.stringify(this.transacoes)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `backup-${this.appName}.json`;
+          a.click();
+        },
+
+        triggerImport() { document.getElementById('fileInput').click(); },
+
+        async handleFileImport(e) {
+          const file = e.target.files[0];
+          if (!file) return;
+          const text = await file.text();
+          const dados = JSON.parse(text);
+          const tx = this.db.transaction(STORE_NAME, 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          dados.forEach(item => store.put(item));
+          tx.oncomplete = () => { alert('Dados importados!'); this.carregarDados(); };
+        }
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
+
